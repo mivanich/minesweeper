@@ -24,8 +24,12 @@ fn main() {
     let mut con = Console::stdout().unwrap();
     
     WinConsole::output().clear().expect("Failed to clear the screen.");
-    con.bg(Intense::No, Color::Green).unwrap();
+
+    let mut bg_color = Color::Green; //Color::Magenta;
+
+    con.bg(Intense::No, bg_color).unwrap();
     con.fg(Intense::Yes, Color::Red).unwrap();
+
 
     for y in 0..MAP_HEIGHT {
         let new_pos = Coord::new(0, y);
@@ -33,6 +37,13 @@ fn main() {
 
         let background = "▢▢▢▢▢▢▢▢▢".encode_utf16().collect::<Vec<u16>>();
         WinConsole::output().write_utf16(background.as_slice()).expect("");
+        
+        bg_color = if bg_color == Color::Green {
+            Color::Magenta
+        } else {
+            Color::Green
+        };
+        con.bg(Intense::No, bg_color).unwrap();
     }
     
     let mines_amount = AtomicI32::new(INITIAL_NUM_MINES as i32);
@@ -118,7 +129,7 @@ fn main() {
             return;
         }
         
-        open_cell(symbol_pos_x as usize, symbol_pos_y as usize, map, &mut open_cells_map_locked);
+        open_cell(symbol_pos_x as usize, symbol_pos_y as usize, map, &mut open_cells_map_locked, false);
         if check_win(map, open_cells_map_locked) {
             win();
             game_over.store(true, Ordering::Relaxed);
@@ -174,7 +185,7 @@ fn win() {
     let new_pos = Coord::new(0, 12);
     WinConsole::output().set_cursor_position(new_pos).expect("Failed to set position of the cursor");
 
-    let text = "YOU WIN!".encode_utf16().collect::<Vec<u16>>();
+    let text = "YOU WIN! 😎".encode_utf16().collect::<Vec<u16>>();
     WinConsole::output().write_utf16(text.as_slice()).expect("Failed to write the text");
 }
 
@@ -192,9 +203,13 @@ fn check_win(bombs_map:[[u8; 9]; 9], open_cells_map: MutexGuard<[[u8; 9]; 9]>) -
     return true
 }
 
-fn open_cell(x: usize, y: usize, map:[[u8; 9]; 9], open_cells_map_locked: &mut MutexGuard<[[u8; 9]; 9]>) {
-    let is_already_opened = open_cells_map_locked[x][y] != 0;
+fn open_cell(x: usize, y: usize, map:[[u8; 9]; 9], open_cells_map_locked: &mut MutexGuard<[[u8; 9]; 9]>, remove_flag: bool) {
+    let is_already_opened = open_cells_map_locked[x][y] == 1;
+    let is_flag = open_cells_map_locked[x][y] == 2;
     if is_already_opened {
+        return;
+    } 
+    if is_flag && !remove_flag {
         return;
     }
     let num_mines_around = count_mines_around(map, x, y);
@@ -209,7 +224,7 @@ fn open_cell(x: usize, y: usize, map:[[u8; 9]; 9], open_cells_map_locked: &mut M
         for i in x-1..x+2 {
             for j in y-1..y+2 {
                 if i >= 0 && i < MAP_WIDTH && j >= 0 && j < MAP_HEIGHT {
-                    open_cell(i as usize, j as usize, map, open_cells_map_locked);
+                    open_cell(i as usize, j as usize, map, open_cells_map_locked, true);
                 }
             }
         }
@@ -219,6 +234,11 @@ fn open_cell(x: usize, y: usize, map:[[u8; 9]; 9], open_cells_map_locked: &mut M
 fn show_number_mines(x: usize, y: usize, num_mines: i32) {
     let new_pos = Coord::new(x as i16, y as i16);
     WinConsole::output().set_cursor_position(new_pos).expect("Failed to set cursor");
+
+    let mut con = Console::stdout().unwrap();
+
+    con.bg(Intense::No, Color::Blue).unwrap();
+    con.fg(Intense::Yes, Color::Red).unwrap();
 
     let num_mines_str = if num_mines == 0 { String::from(" ") } else { to_str(num_mines) };
 
@@ -283,6 +303,20 @@ fn put_flag(x: i16, y: i16, set: bool) {
     WinConsole::output().set_cursor_position(new_pos).expect("Failed to set cursor position.");
 
     let flag_sign = if set { "F" } else { "▢" };
+    
+    let mut con = Console::stdout().unwrap();
+    if set {
+        con.bg(Intense::No, Color::Red).unwrap();
+        con.fg(Intense::Yes, Color::Cyan).unwrap();
+    } else {
+        if y % 2 == 0 {
+            con.bg(Intense::No, Color::Green).unwrap();
+            con.fg(Intense::Yes, Color::Red).unwrap();
+        } else {            
+            con.bg(Intense::No, Color::Magenta).unwrap();
+            con.fg(Intense::Yes, Color::Red).unwrap();
+        }
+    }
     let flag = flag_sign.encode_utf16().collect::<Vec<u16>>();
     WinConsole::output().write_utf16(flag.as_slice()).expect("Failed to put flag.");
 }
