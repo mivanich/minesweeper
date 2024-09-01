@@ -8,6 +8,7 @@ use device_query::{DeviceEvents, DeviceQuery, DeviceState, Keycode, MouseState};
 
 use active_win_pos_rs::get_active_window;
 
+use std::process::exit;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 
@@ -25,7 +26,8 @@ fn main() {
     
     WinConsole::output().clear().expect("Failed to clear the screen.");
 
-    let mut bg_color = Color::Green; //Color::Magenta;
+
+    let mut bg_color = Color::Green;
 
     con.bg(Intense::No, bg_color).unwrap();
     con.fg(Intense::Yes, Color::Red).unwrap();
@@ -39,7 +41,7 @@ fn main() {
         WinConsole::output().write_utf16(background.as_slice()).expect("");
         
         bg_color = if bg_color == Color::Green {
-            Color::Magenta
+            Color::Yellow
         } else {
             Color::Green
         };
@@ -82,15 +84,15 @@ fn main() {
         let window_pos_y = active_window.position.y as i32;
 
         const BORDER_WIDTH: i32 = 8;
-        const BORDER_HEIGHT: i32 = 40;
+        const BORDER_HEIGHT: i32 = 50;
 
         let click_x = mouse.coords.0 - window_pos_x - BORDER_WIDTH;
         let click_y = mouse.coords.1 - window_pos_y - BORDER_HEIGHT;
 
-        let symbol_pos_x: i16 = (click_x / 9) as i16 - 1;
-        let symbol_pos_y: i16 = (click_y as f32 / 19.5) as i16;
+        let symbol_pos_x: i16 = (click_x as f32 / 9.) as i16 - 1;
+        let symbol_pos_y: i16 = (click_y as f32 / 19.0) as i16;
 
-        let is_outside_map = symbol_pos_x >= MAP_WIDTH || symbol_pos_y >= MAP_HEIGHT;
+        let is_outside_map = symbol_pos_x >= MAP_WIDTH || symbol_pos_y >= MAP_HEIGHT || symbol_pos_x < 0 || symbol_pos_y < 0;
         if is_outside_map {
             return;
         }
