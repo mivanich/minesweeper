@@ -21,9 +21,21 @@ const MAP_HEIGHT: i16 = 9;
 
 const FLAG_ID: u8 = 2u8;
 
+fn fill_map(map: Arc<Mutex<[[u8; 9]; 9]>>) {
+    let mut m = map.lock().unwrap();
+
+    let mines_coords = generage_mines_coords();
+    for (_, elem) in mines_coords.iter().enumerate() {
+        let x = elem.0 as i16;
+        let y = elem.1 as i16;
+
+        m[x as usize][y as usize] = 1u8;
+    }
+}
+
 fn main() {
     let mut con = Console::stdout().unwrap();
-    
+
     WinConsole::output().clear().expect("Failed to clear the screen.");
 
 
@@ -31,7 +43,6 @@ fn main() {
 
     con.bg(Intense::No, bg_color).unwrap();
     con.fg(Intense::Yes, Color::Red).unwrap();
-
 
     for y in 0..MAP_HEIGHT {
         let new_pos = Coord::new(0, y);
@@ -48,25 +59,25 @@ fn main() {
         con.bg(Intense::No, bg_color).unwrap();
     }
     
-    let mines_amount = AtomicI32::new(INITIAL_NUM_MINES as i32);
+    let mines_amount = Arc::new(AtomicI32::new(INITIAL_NUM_MINES as i32));
+    let minex_amount_ptr2 = mines_amount.clone();
     draw_mines_panel(mines_amount.load(Ordering::Relaxed));
 
-    let game_over = AtomicBool::new(false);
+    let game_over = Arc::new(AtomicBool::new(false));
+    let is_over = game_over.clone();
 
-    let mut map: [[u8; 9]; 9] = [[0u8; 9]; 9];
+    let map: Arc<Mutex<[[u8; 9]; 9]>> = Arc::new(Mutex::new([[0u8; 9]; 9]));
+    let second_map = map.clone();
+    let third_map_ptr = map.clone();
+    
     let open_cells_map: [[u8; 9]; 9] = [[0u8; 9]; 9];
     let open_cells_mutex: Arc<Mutex<[[u8; 9]; 9]>> = Arc::new(Mutex::new(open_cells_map));
+    let open_cells_second_ptr = open_cells_mutex.clone();
 
-    let mines_coords = generage_mines_coords();
-    for (_, elem) in mines_coords.iter().enumerate() {
-        let x = elem.0 as i16;
-        let y = elem.1 as i16;
-
-        map[x as usize][y as usize] = 1;
-    }
+    fill_map(map);
 
     let device_state = DeviceState::new();
-    let _guard = device_state.on_mouse_up(move |button| {
+    let _guard = device_state.on_mouse_up( move|button| {
         if game_over.fetch_or(false, Ordering::Relaxed) {
             return;
         }        
@@ -122,19 +133,87 @@ fn main() {
             let flag_cell_value = if need_install_flag { 2 } else { 0 };
             open_cells_map_locked[x][y] = flag_cell_value;
             return;
-        }
-
+        }    
+        
+        let map_ptr: MutexGuard<[[u8; 9]; 9]> = third_map_ptr.lock().unwrap();
         let mut open_cells_map_locked: MutexGuard<[[u8; 9]; 9]> = open_cells_mutex.lock().unwrap();
-        if is_bomb(map, symbol_pos_x, symbol_pos_y) && !is_flag(&mut open_cells_map_locked, symbol_pos_x, symbol_pos_y) {
-            lose(&map);
+        if is_bomb(&map_ptr, symbol_pos_x, symbol_pos_y) && !is_flag(&mut open_cells_map_locked, symbol_pos_x, symbol_pos_y) {
+            lose(&map_ptr);
             game_over.store(true, Ordering::Relaxed);
             return;
         }
         
-        open_cell(symbol_pos_x as usize, symbol_pos_y as usize, map, &mut open_cells_map_locked, false);
-        if check_win(map, open_cells_map_locked) {
+        open_cell(symbol_pos_x as usize, symbol_pos_y as usize, &map_ptr, &mut open_cells_map_locked, false);
+        if check_win(&map_ptr, open_cells_map_locked) {
             win();
             game_over.store(true, Ordering::Relaxed);
+        }
+     });
+
+     let _guard = device_state.on_key_up( move|key| {
+        // move game_over;
+        if is_over.load(Ordering::Relaxed) {
+            if *key == Keycode::Y {
+                let mut con = Console::stdout().unwrap();
+
+
+                con.bg(Intense::No, Color::Black).unwrap();
+                con.fg(Intense::Yes, Color::White).unwrap();
+                let text = "                        ".encode_utf16().collect::<Vec<u16>>();
+                let game_over_pos = Coord::new(0, 12);
+                WinConsole::output().set_cursor_position(game_over_pos).expect("Failed to set position of the cursor");
+                WinConsole::output().write_utf16(text.as_slice()).expect("Failed to write the text");
+                let new_game_question_pos = Coord::new(0, 13);
+                WinConsole::output().set_cursor_position(new_game_question_pos).expect("Failed to set position of the cursor");
+                // let text = "                        ".encode_utf16().collect::<Vec<u16>>();
+                WinConsole::output().write_utf16(text.as_slice()).expect("Failed to write the text");
+
+
+                let mut bg_color = Color::Green;
+
+                con.bg(Intense::No, bg_color).unwrap();
+                con.fg(Intense::Yes, Color::Red).unwrap();
+            
+            
+                for y in 0..MAP_HEIGHT {
+                    let new_pos = Coord::new(0, y);
+                    WinConsole::output().set_cursor_position(new_pos).expect("Failed to set cursor");
+            
+                    let background = "▢▢▢▢▢▢▢▢▢".encode_utf16().collect::<Vec<u16>>();
+                    WinConsole::output().write_utf16(background.as_slice()).expect("");
+                    
+                    bg_color = if bg_color == Color::Green {
+                        Color::Yellow
+                    } else {
+                        Color::Green
+                    };
+                    con.bg(Intense::No, bg_color).unwrap();
+
+                    let mut m = second_map.lock().unwrap();
+                    let mut open_cells = open_cells_second_ptr.lock().unwrap();
+                    let mines_coords = generage_mines_coords();
+                    for x in 0..9_usize {
+                        for y in 0..9_usize {
+                            m[x][y] = 0;
+                            open_cells[x][y] = 0;
+                        }
+                    }
+
+                    for (_, elem) in mines_coords.iter().enumerate() {
+                        let x = elem.0 as i16;
+                        let y = elem.1 as i16;                
+                        m[x as usize][y as usize] = 1;
+                    }
+
+                    minex_amount_ptr2.store(INITIAL_NUM_MINES as i32, Ordering::Relaxed);
+                    draw_mines_panel(INITIAL_NUM_MINES as i32);                    
+
+                    is_over.store(false, Ordering::Relaxed);
+                }
+
+            } else if *key == Keycode::N {
+                exit(0);
+            }
         }
      });
 
@@ -165,12 +244,20 @@ fn draw_mines_panel(num_mines: i32) {
     con.fg(Intense::Yes, Color::Red).unwrap();
 }
 
+fn show_new_game_question() {
+    let new_game_question_pos = Coord::new(0, 13);
+    WinConsole::output().set_cursor_position(new_game_question_pos).expect("Failed to set position of the cursor");
+    let text = "New game? [Y/n]".encode_utf16().collect::<Vec<u16>>();
+    WinConsole::output().write_utf16(text.as_slice()).expect("Failed to write the text");
+}
+
 fn lose(bomb_map: &[[u8; 9]; 9]) {
     let new_pos = Coord::new(0, 12);
     WinConsole::output().set_cursor_position(new_pos).expect("Failed to set position of the cursor");
 
     let text = "GAME OVER".encode_utf16().collect::<Vec<u16>>();
     WinConsole::output().write_utf16(text.as_slice()).expect("Failed to write the text");
+    show_new_game_question();
 
     for x in 0..MAP_WIDTH {
         for y in 0..MAP_HEIGHT {
@@ -189,9 +276,10 @@ fn win() {
 
     let text = "YOU WIN! 😎".encode_utf16().collect::<Vec<u16>>();
     WinConsole::output().write_utf16(text.as_slice()).expect("Failed to write the text");
+    show_new_game_question();
 }
 
-fn check_win(bombs_map:[[u8; 9]; 9], open_cells_map: MutexGuard<[[u8; 9]; 9]>) -> bool {
+fn check_win(bombs_map:&MutexGuard<[[u8; 9]; 9]>, open_cells_map: MutexGuard<[[u8; 9]; 9]>) -> bool {
     for x in 0..MAP_WIDTH {
         for y in 0..MAP_HEIGHT {
             let x_u = x as usize;
@@ -205,7 +293,7 @@ fn check_win(bombs_map:[[u8; 9]; 9], open_cells_map: MutexGuard<[[u8; 9]; 9]>) -
     return true
 }
 
-fn open_cell(x: usize, y: usize, map:[[u8; 9]; 9], open_cells_map_locked: &mut MutexGuard<[[u8; 9]; 9]>, remove_flag: bool) {
+fn open_cell(x: usize, y: usize, map:&MutexGuard<[[u8; 9]; 9]>, open_cells_map_locked: &mut MutexGuard<[[u8; 9]; 9]>, remove_flag: bool) {
     let is_already_opened = open_cells_map_locked[x][y] == 1;
     let is_flag = open_cells_map_locked[x][y] == 2;
     if is_already_opened {
@@ -268,7 +356,7 @@ fn generage_mines_coords() -> [(u32, u32); INITIAL_NUM_MINES] {
     return coords;
 }
 
-fn count_mines_around(map:[[u8; 9]; 9], x: usize, y: usize) -> i32 {
+fn count_mines_around(map:&MutexGuard<[[u8; 9]; 9]>, x: usize, y: usize) -> i32 {
     use std::cmp;
 
     let x_left = cmp::max(0, (x as i32)-1);
@@ -292,7 +380,7 @@ fn to_str(i: i32) -> String {
     format!("{}", i)
 }
 
-fn is_bomb(map:[[u8; 9]; 9], x: i16, y: i16) -> bool {
+fn is_bomb(map: &MutexGuard<[[u8; 9]; 9]>, x: i16, y: i16) -> bool {
     return map[x as usize][y as usize] == 1u8;
 }
 
